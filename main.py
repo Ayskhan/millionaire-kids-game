@@ -1,0 +1,5 @@
+﻿from src.app import run_game
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_game())
