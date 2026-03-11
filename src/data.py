@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.config import PRIZE_LADDER, QUESTIONS_FILE
+from src.config import DIFFICULTY_ORDER, QUESTIONS_FILE
 
 
 class DataValidationError(Exception):
@@ -13,14 +13,14 @@ class DataValidationError(Exception):
 
 @dataclass(frozen=True)
 class Question:
-    level: int
+    difficulty: str
     text: str
     options: list[str]
     answer_index: int
     category: str
 
 
-def load_questions(path: Path | None = None) -> dict[int, list[Question]]:
+def load_questions(path: Path | None = None) -> dict[str, list[Question]]:
     file_path = path or QUESTIONS_FILE
     try:
         raw_data = json.loads(file_path.read_text(encoding="utf-8-sig"))
@@ -34,23 +34,20 @@ def load_questions(path: Path | None = None) -> dict[int, list[Question]]:
     if not isinstance(raw_data, list):
         raise DataValidationError("Файл вопросов должен содержать список вопросов.")
 
-    if len(raw_data) < 50:
-        raise DataValidationError("В базе должно быть минимум 50 вопросов.")
-
-    grouped: dict[int, list[Question]] = {level: [] for level in range(1, len(PRIZE_LADDER) + 1)}
+    grouped: dict[str, list[Question]] = {difficulty: [] for difficulty in DIFFICULTY_ORDER}
 
     for index, item in enumerate(raw_data, start=1):
         if not isinstance(item, dict):
             raise DataValidationError(f"Вопрос №{index} имеет неверный формат.")
 
-        level = item.get("level")
+        difficulty = item.get("difficulty")
         text = item.get("question")
         options = item.get("options")
         answer_index = item.get("answer_index")
         category = item.get("category", "Общее")
 
-        if not isinstance(level, int) or level not in grouped:
-            raise DataValidationError(f"У вопроса №{index} указан неверный уровень.")
+        if difficulty not in grouped:
+            raise DataValidationError(f"У вопроса №{index} указана неверная сложность.")
         if not isinstance(text, str) or not text.strip():
             raise DataValidationError(f"У вопроса №{index} нет текста вопроса.")
         if not isinstance(options, list) or len(options) != 4 or not all(
@@ -64,9 +61,9 @@ def load_questions(path: Path | None = None) -> dict[int, list[Question]]:
                 f"У вопроса №{index} неверно указан правильный ответ."
             )
 
-        grouped[level].append(
+        grouped[difficulty].append(
             Question(
-                level=level,
+                difficulty=difficulty,
                 text=text.strip(),
                 options=[option.strip() for option in options],
                 answer_index=answer_index,
@@ -74,9 +71,12 @@ def load_questions(path: Path | None = None) -> dict[int, list[Question]]:
             )
         )
 
-    empty_levels = [str(level) for level, questions in grouped.items() if not questions]
-    if empty_levels:
-        joined = ", ".join(empty_levels)
-        raise DataValidationError(f"Для уровней {joined} нет ни одного вопроса.")
+    if len(raw_data) < 45:
+        raise DataValidationError("В базе должно быть минимум 45 вопросов.")
+
+    missing = [difficulty for difficulty, questions in grouped.items() if len(questions) < 10]
+    if missing:
+        joined = ", ".join(missing)
+        raise DataValidationError(f"Для сложностей {joined} недостаточно вопросов.")
 
     return grouped

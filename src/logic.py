@@ -1,15 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
 
-from src.config import PRIZE_LADDER
+from src.config import DIFFICULTY_ORDER, MILESTONE_LEVELS, PRIZE_LADDER
 from src.data import Question
 
 
 @dataclass
 class GameSession:
-    question_pool: dict[int, list[Question]]
+    question_pool: dict[str, list[Question]]
     rng: random.Random = field(default_factory=random.Random)
     level_index: int = 0
     selected_questions: list[Question] = field(default_factory=list)
@@ -31,7 +31,7 @@ class GameSession:
             if original_index == question.answer_index
         )
         return Question(
-            level=question.level,
+            difficulty=question.difficulty,
             text=question.text,
             options=new_options,
             answer_index=new_answer_index,
@@ -47,10 +47,14 @@ class GameSession:
         self.used_remove_one = False
         self.used_audience = False
         self.audience_votes = None
-        self.selected_questions = [
-            self._pick_question(self.rng.choice(self.question_pool[level]))
-            for level in range(1, len(PRIZE_LADDER) + 1)
-        ]
+
+        stage_questions: list[Question] = []
+        for difficulty in DIFFICULTY_ORDER:
+            stage_questions.extend(
+                self._pick_question(question)
+                for question in self.rng.sample(self.question_pool[difficulty], 5)
+            )
+        self.selected_questions = stage_questions
         self._reset_question_state()
 
     @property
@@ -60,6 +64,10 @@ class GameSession:
     @property
     def current_amount(self) -> str:
         return PRIZE_LADDER[self.level_index]
+
+    @property
+    def current_difficulty(self) -> str:
+        return self.current_question.difficulty
 
     @property
     def level_number(self) -> int:
@@ -72,6 +80,15 @@ class GameSession:
     @property
     def is_last_question(self) -> bool:
         return self.level_index == len(self.selected_questions) - 1
+
+    @property
+    def secured_amount(self) -> str:
+        completed = self.level_index
+        if completed >= 10:
+            return PRIZE_LADDER[9]
+        if completed >= 5:
+            return PRIZE_LADDER[4]
+        return "0"
 
     def _reset_question_state(self) -> None:
         self.available_answers = {0, 1, 2, 3}
@@ -124,7 +141,8 @@ class GameSession:
         if not wrong_visible:
             votes[self.correct_answer] = 100
         else:
-            correct_percent = self.rng.randint(55, 78)
+            difficulty_bonus = {"easy": 74, "medium": 66, "hard": 58}[self.current_difficulty]
+            correct_percent = self.rng.randint(difficulty_bonus - 6, difficulty_bonus + 4)
             remaining = 100 - correct_percent
             weights = [self.rng.randint(1, 9) for _ in wrong_visible]
             total_weight = sum(weights)
@@ -162,18 +180,6 @@ class GameSession:
         for hidden in hidden_answers:
             votes[hidden] = 0
 
-        if votes[self.correct_answer] <= max((votes[index] for index in wrong_visible), default=0):
-            extra = max((votes[index] for index in wrong_visible), default=0) - votes[self.correct_answer] + 1
-            for answer_index in reversed(wrong_visible):
-                if extra <= 0:
-                    break
-                cut = min(extra, votes[answer_index])
-                votes[answer_index] -= cut
-                extra -= cut
-            votes[self.correct_answer] = 100 - sum(
-                votes[index] for index in range(4) if index != self.correct_answer
-            )
-
         self.used_audience = True
         self.audience_votes = votes
         return votes
@@ -192,5 +198,9 @@ class GameSession:
         self._reset_question_state()
 
     def handle_wrong_answer(self) -> None:
+        self.last_won_amount = self.secured_amount
         self.game_finished = True
         self.victory = False
+
+    def is_milestone_question(self) -> bool:
+        return self.level_number in MILESTONE_LEVELS

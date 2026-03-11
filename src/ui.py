@@ -12,6 +12,8 @@ from src.config import (
     PANEL_COLOR,
     PANEL_SHADOW,
     REMOVED_OVERLAY,
+    SCROLL_THUMB,
+    SCROLL_TRACK,
     SOFT_BG,
     TEXT_DARK,
     TEXT_LIGHT,
@@ -36,6 +38,29 @@ def draw_rounded_panel(surface: pygame.Surface, rect: pygame.Rect, radius: int =
     pygame.draw.rect(surface, BORDER, rect, width=2, border_radius=radius)
 
 
+def wrap_text_lines(text: str, font: pygame.font.Font, max_width: int) -> list[str]:
+    if not text:
+        return [""]
+
+    lines: list[str] = []
+    for paragraph in text.splitlines() or [text]:
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+
+        current = words[0]
+        for word in words[1:]:
+            trial = f"{current} {word}"
+            if font.size(trial)[0] <= max_width:
+                current = trial
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+    return lines
+
+
 def render_wrapped_text(
     surface: pygame.Surface,
     text: str,
@@ -44,30 +69,20 @@ def render_wrapped_text(
     rect: pygame.Rect,
     line_gap: int = 6,
     align: str = "left",
-) -> None:
-    words = text.split()
-    lines: list[str] = []
-    current_line = ""
-    for word in words:
-        trial = word if not current_line else f"{current_line} {word}"
-        if font.size(trial)[0] <= rect.width:
-            current_line = trial
-        else:
-            if current_line:
-                lines.append(current_line)
-            current_line = word
-    if current_line:
-        lines.append(current_line)
-
+) -> int:
+    lines = wrap_text_lines(text, font, rect.width)
     y = rect.top
     for line in lines:
         rendered = font.render(line, True, color)
         if align == "center":
             x = rect.centerx - rendered.get_width() // 2
+        elif align == "right":
+            x = rect.right - rendered.get_width()
         else:
             x = rect.left
         surface.blit(rendered, (x, y))
         y += rendered.get_height() + line_gap
+    return y - rect.top
 
 
 class Button:
@@ -170,3 +185,17 @@ def draw_badge(surface: pygame.Surface, rect: pygame.Rect, text: str, font: pyga
     pygame.draw.rect(surface, ACCENT, rect, border_radius=18)
     pygame.draw.rect(surface, BORDER, rect, width=2, border_radius=18)
     render_wrapped_text(surface, text, font, TEXT_DARK, rect.inflate(-12, -10), align="center")
+
+
+def draw_scrollbar(surface: pygame.Surface, track_rect: pygame.Rect, viewport_height: int, content_height: int, scroll_offset: int) -> None:
+    if content_height <= viewport_height:
+        return
+
+    pygame.draw.rect(surface, SCROLL_TRACK, track_rect, border_radius=10)
+    thumb_height = max(36, int(track_rect.height * viewport_height / content_height))
+    max_scroll = content_height - viewport_height
+    scroll_ratio = 0 if max_scroll <= 0 else scroll_offset / max_scroll
+    thumb_y = track_rect.top + int((track_rect.height - thumb_height) * scroll_ratio)
+    thumb_rect = pygame.Rect(track_rect.left, thumb_y, track_rect.width, thumb_height)
+    pygame.draw.rect(surface, SCROLL_THUMB, thumb_rect, border_radius=10)
+    pygame.draw.rect(surface, BORDER, track_rect, width=2, border_radius=10)

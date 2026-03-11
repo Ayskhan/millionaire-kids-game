@@ -1,7 +1,8 @@
-__pycache__/
+﻿__pycache__/
 *.pyc
 .build_deps/
 .venv/
 build/
 dist/
 *.spec
+.player_data/

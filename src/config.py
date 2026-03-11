@@ -1,8 +1,9 @@
-﻿from pathlib import Path
+from pathlib import Path
+import os
 import sys
 
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+WINDOW_WIDTH = 1360
+WINDOW_HEIGHT = 768
 WINDOW_TITLE = "Детский миллионер"
 FPS = 60
 
@@ -14,8 +15,11 @@ else:
 QUESTIONS_FILE = BASE_DIR / "questions.json"
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDS_DIR = ASSETS_DIR / "sounds"
+PLAYER_DATA_DIR = Path(os.getenv("APPDATA", str(BASE_DIR))) / "MillionaireKidsGame"
+PLAYER_DATA_FILE = PLAYER_DATA_DIR / "players.json"
 
 FONT_NAME = "Segoe UI"
+MAX_NAME_LENGTH = 18
 
 PRIZE_LADDER = [
     "100",
@@ -28,9 +32,20 @@ PRIZE_LADDER = [
     "8 000",
     "16 000",
     "32 000",
+    "64 000",
     "125 000",
+    "250 000",
+    "500 000",
     "1 000 000",
 ]
+
+MILESTONE_LEVELS = {5, 10}
+DIFFICULTY_ORDER = ("easy", "medium", "hard")
+DIFFICULTY_LABELS = {
+    "easy": "Лёгкий",
+    "medium": "Средний",
+    "hard": "Сложнее",
+}
 
 BACKGROUND_TOP = (14, 39, 96)
 BACKGROUND_BOTTOM = (76, 155, 255)
@@ -46,10 +61,16 @@ BUTTON_GREEN = (61, 186, 104)
 BUTTON_RED = (226, 94, 94)
 BUTTON_ORANGE = (255, 156, 51)
 BUTTON_PURPLE = (142, 109, 242)
+BUTTON_PINK = (255, 104, 161)
 BORDER = (215, 227, 255)
 SOFT_BG = (240, 245, 255)
 AUDIENCE_BAR = (104, 192, 119)
 REMOVED_OVERLAY = (220, 228, 244)
+INPUT_BG = (249, 251, 255)
+SCROLL_TRACK = (228, 235, 251)
+SCROLL_THUMB = (109, 141, 232)
+MILESTONE_GLOW = (255, 224, 131)
+PROFILE_CARD = (247, 250, 255)
 
 MENU_BUTTON_TEXT = 34
 MAIN_TEXT = 28
