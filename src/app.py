@@ -8,6 +8,8 @@ import pygame
 
 from src.config import (
     ACCENT,
+    APP_NAME,
+    APP_VERSION,
     BACKGROUND_BOTTOM,
     BACKGROUND_TOP,
     BORDER,
@@ -699,7 +701,7 @@ class MillionaireApp:
         panel = pygame.Rect(180, 70, 1000, 620)
         draw_rounded_panel(self.screen, panel, radius=34)
 
-        title = self.fonts["title"].render("Детский миллионер", True, TEXT_DARK)
+        title = self.fonts["title"].render(f"{APP_NAME} v{APP_VERSION}", True, TEXT_DARK)
         subtitle = self.fonts["body"].render("Ответь на 20 вопросов и доберись до 1 000 000!", True, TEXT_DARK)
         self.screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 120))
         self.screen.blit(subtitle, (WINDOW_WIDTH // 2 - subtitle.get_width() // 2, 180))
@@ -986,3 +988,4 @@ def run_game() -> int:
 
 if __name__ == "__main__":
     sys.exit(run_game())
+

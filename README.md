@@ -1,6 +1,6 @@
 ﻿# Детская игра «Кто хочет стать миллионером?»
 
-Офлайн-игра на Python и `pygame-ce` для Windows 10 и Windows 11. Вся игра, интерфейс, вопросы и подсказки полностью на русском языке и подходят для ребёнка.
+Офлайн-игра на Python и `pygame-ce` для Windows 10 и Windows 11. Текущая версия приложения: `1.3.0`.
 
 ## Возможности
 
@@ -32,13 +32,15 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Окно игры показывает версию в заголовке, например: `Детский миллионер v1.3.0`.
+
 ## Сборка standalone `.exe`
 
 ```powershell
-pyinstaller --noconfirm --windowed --name MillionaireKids --add-data "questions.json;." --add-data "assets;assets" main.py
+pyinstaller --noconfirm --clean --onefile --windowed --name MillionaireKids-v1.3.0 --add-data "questions.json;." --add-data "assets;assets" main.py
 ```
 
-После сборки готовый файл будет лежать в `dist\MillionaireKids\` или в `dist\MillionaireKids.exe`, в зависимости от режима сборки.
+После сборки файл будет лежать по пути `dist\MillionaireKids-v1.3.0.exe`.
 
 ## Обновление вопросов из GitHub
 

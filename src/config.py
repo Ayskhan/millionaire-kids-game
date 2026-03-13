@@ -2,9 +2,12 @@
 import os
 import sys
 
+APP_NAME = "Детский миллионер"
+APP_VERSION = "1.3.0"
+BUILD_NAME = f"MillionaireKids-v{APP_VERSION}"
 WINDOW_WIDTH = 1360
 WINDOW_HEIGHT = 768
-WINDOW_TITLE = "Детский миллионер"
+WINDOW_TITLE = f"{APP_NAME} v{APP_VERSION}"
 FPS = 60
 
 if getattr(sys, "frozen", False):
