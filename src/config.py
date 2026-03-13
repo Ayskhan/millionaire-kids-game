@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import os
 import sys
 
@@ -15,11 +15,20 @@ else:
 QUESTIONS_FILE = BASE_DIR / "questions.json"
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDS_DIR = ASSETS_DIR / "sounds"
-PLAYER_DATA_DIR = Path(os.getenv("APPDATA", str(BASE_DIR))) / "MillionaireKidsGame"
+APP_DATA_DIR = Path(os.getenv("APPDATA", str(BASE_DIR))) / "MillionaireKidsGame"
+PLAYER_DATA_DIR = APP_DATA_DIR
 PLAYER_DATA_FILE = PLAYER_DATA_DIR / "players.json"
+QUESTIONS_DATA_DIR = APP_DATA_DIR / "questions"
+ACTIVE_QUESTIONS_FILE = QUESTIONS_DATA_DIR / "questions_active.json"
+QUESTIONS_REMOTE_URL = os.getenv(
+    "MILLIONAIRE_QUESTIONS_URL",
+    "https://raw.githubusercontent.com/Ayskhan/millionaire-kids-game/main/questions.json",
+)
+QUESTIONS_REMOTE_TIMEOUT = 12
 
 FONT_NAME = "Segoe UI"
 MAX_NAME_LENGTH = 18
+QUESTION_COUNT_PER_TIER = 5
 
 PRIZE_LADDER = [
     "100",
@@ -34,17 +43,23 @@ PRIZE_LADDER = [
     "32 000",
     "64 000",
     "125 000",
-    "250 000",
+    "200 000",
+    "300 000",
+    "400 000",
     "500 000",
+    "650 000",
+    "800 000",
+    "900 000",
     "1 000 000",
 ]
 
 MILESTONE_LEVELS = {5, 10}
-DIFFICULTY_ORDER = ("easy", "medium", "hard")
+DIFFICULTY_ORDER = ("easy", "medium", "hard", "very_hard")
 DIFFICULTY_LABELS = {
     "easy": "Лёгкий",
     "medium": "Средний",
-    "hard": "Сложнее",
+    "hard": "Сложный",
+    "very_hard": "Очень сложный",
 }
 
 BACKGROUND_TOP = (14, 39, 96)
@@ -61,7 +76,8 @@ BUTTON_GREEN = (61, 186, 104)
 BUTTON_RED = (226, 94, 94)
 BUTTON_ORANGE = (255, 156, 51)
 BUTTON_PURPLE = (142, 109, 242)
-BUTTON_PINK = (255, 104, 161)
+BUTTON_TEAL = (28, 173, 170)
+BUTTON_TEAL_HOVER = (48, 191, 186)
 BORDER = (215, 227, 255)
 SOFT_BG = (240, 245, 255)
 AUDIENCE_BAR = (104, 192, 119)

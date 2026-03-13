@@ -1,15 +1,15 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
 
-from src.config import DIFFICULTY_ORDER, MILESTONE_LEVELS, PRIZE_LADDER
-from src.data import Question
+from src.config import DIFFICULTY_ORDER, MILESTONE_LEVELS, PRIZE_LADDER, QUESTION_COUNT_PER_TIER
+from src.data import Question, QuestionPool
 
 
 @dataclass
 class GameSession:
-    question_pool: dict[str, list[Question]]
+    question_pool: QuestionPool
     rng: random.Random = field(default_factory=random.Random)
     level_index: int = 0
     selected_questions: list[Question] = field(default_factory=list)
@@ -27,7 +27,8 @@ class GameSession:
         self.rng.shuffle(indexed_options)
         new_options = [option for _, option in indexed_options]
         new_answer_index = next(
-            idx for idx, (original_index, _) in enumerate(indexed_options)
+            idx
+            for idx, (original_index, _) in enumerate(indexed_options)
             if original_index == question.answer_index
         )
         return Question(
@@ -52,7 +53,7 @@ class GameSession:
         for difficulty in DIFFICULTY_ORDER:
             stage_questions.extend(
                 self._pick_question(question)
-                for question in self.rng.sample(self.question_pool[difficulty], 5)
+                for question in self.rng.sample(self.question_pool[difficulty], QUESTION_COUNT_PER_TIER)
             )
         self.selected_questions = stage_questions
         self._reset_question_state()
@@ -84,11 +85,11 @@ class GameSession:
     @property
     def secured_amount(self) -> str:
         completed = self.level_index
-        if completed >= 10:
-            return PRIZE_LADDER[9]
-        if completed >= 5:
-            return PRIZE_LADDER[4]
-        return "0"
+        secured = "0"
+        for milestone in sorted(MILESTONE_LEVELS):
+            if completed >= milestone:
+                secured = PRIZE_LADDER[milestone - 1]
+        return secured
 
     def _reset_question_state(self) -> None:
         self.available_answers = {0, 1, 2, 3}
@@ -141,7 +142,12 @@ class GameSession:
         if not wrong_visible:
             votes[self.correct_answer] = 100
         else:
-            difficulty_bonus = {"easy": 74, "medium": 66, "hard": 58}[self.current_difficulty]
+            difficulty_bonus = {
+                "easy": 74,
+                "medium": 66,
+                "hard": 58,
+                "very_hard": 52,
+            }[self.current_difficulty]
             correct_percent = self.rng.randint(difficulty_bonus - 6, difficulty_bonus + 4)
             remaining = 100 - correct_percent
             weights = [self.rng.randint(1, 9) for _ in wrong_visible]

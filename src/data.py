@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.config import DIFFICULTY_ORDER, QUESTIONS_FILE
+from src.config import DIFFICULTY_ORDER, QUESTION_COUNT_PER_TIER, QUESTIONS_FILE
 
 
 class DataValidationError(Exception):
@@ -20,21 +20,40 @@ class Question:
     category: str
 
 
-def load_questions(path: Path | None = None) -> dict[str, list[Question]]:
-    file_path = path or QUESTIONS_FILE
+QuestionPool = dict[str, list[Question]]
+
+
+def load_questions(path: Path | None = None) -> QuestionPool:
+    return load_questions_from_path(path or QUESTIONS_FILE)
+
+
+def load_questions_from_path(path: Path) -> QuestionPool:
     try:
-        raw_data = json.loads(file_path.read_text(encoding="utf-8-sig"))
+        text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError as exc:
-        raise DataValidationError(f"Файл с вопросами не найден: {file_path}") from exc
+        raise DataValidationError(f"Файл с вопросами не найден: {path}") from exc
+    except OSError as exc:
+        raise DataValidationError(f"Не удалось прочитать файл вопросов: {path}") from exc
+
+    return load_questions_from_text(text, source_name=str(path))
+
+
+def load_questions_from_text(text: str, source_name: str = "строка") -> QuestionPool:
+    try:
+        raw_data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise DataValidationError(
             f"Файл вопросов содержит ошибку JSON: строка {exc.lineno}, столбец {exc.colno}"
         ) from exc
 
-    if not isinstance(raw_data, list):
-        raise DataValidationError("Файл вопросов должен содержать список вопросов.")
+    return validate_questions_payload(raw_data, source_name=source_name)
 
-    grouped: dict[str, list[Question]] = {difficulty: [] for difficulty in DIFFICULTY_ORDER}
+
+def validate_questions_payload(raw_data: object, source_name: str = "данные") -> QuestionPool:
+    if not isinstance(raw_data, list):
+        raise DataValidationError(f"Источник {source_name} должен содержать список вопросов.")
+
+    grouped: QuestionPool = {difficulty: [] for difficulty in DIFFICULTY_ORDER}
 
     for index, item in enumerate(raw_data, start=1):
         if not isinstance(item, dict):
@@ -50,11 +69,18 @@ def load_questions(path: Path | None = None) -> dict[str, list[Question]]:
             raise DataValidationError(f"У вопроса №{index} указана неверная сложность.")
         if not isinstance(text, str) or not text.strip():
             raise DataValidationError(f"У вопроса №{index} нет текста вопроса.")
-        if not isinstance(options, list) or len(options) != 4 or not all(
-            isinstance(option, str) and option.strip() for option in options
-        ):
+        if not isinstance(options, list) or len(options) != 4:
             raise DataValidationError(
-                f"У вопроса №{index} должно быть ровно 4 непустых варианта ответа."
+                f"У вопроса №{index} должно быть ровно 4 варианта ответа."
+            )
+        if not all(isinstance(option, str) and option.strip() for option in options):
+            raise DataValidationError(
+                f"У вопроса №{index} все варианты ответа должны быть непустыми строками."
+            )
+        normalized_options = [option.strip().casefold() for option in options]
+        if len(set(normalized_options)) != 4:
+            raise DataValidationError(
+                f"У вопроса №{index} есть повторяющиеся варианты ответа."
             )
         if not isinstance(answer_index, int) or answer_index not in range(4):
             raise DataValidationError(
@@ -71,12 +97,19 @@ def load_questions(path: Path | None = None) -> dict[str, list[Question]]:
             )
         )
 
-    if len(raw_data) < 45:
-        raise DataValidationError("В базе должно быть минимум 45 вопросов.")
+    minimum_total = len(DIFFICULTY_ORDER) * QUESTION_COUNT_PER_TIER
+    if len(raw_data) < minimum_total:
+        raise DataValidationError(
+            f"В базе должно быть минимум {minimum_total} вопросов для всех уровней сложности."
+        )
 
-    missing = [difficulty for difficulty, questions in grouped.items() if len(questions) < 10]
+    missing = [
+        difficulty for difficulty, questions in grouped.items() if len(questions) < QUESTION_COUNT_PER_TIER
+    ]
     if missing:
         joined = ", ".join(missing)
-        raise DataValidationError(f"Для сложностей {joined} недостаточно вопросов.")
+        raise DataValidationError(
+            f"Для сложностей {joined} недостаточно вопросов. Нужно минимум по {QUESTION_COUNT_PER_TIER}."
+        )
 
     return grouped

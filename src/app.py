@@ -17,6 +17,8 @@ from src.config import (
     BUTTON_ORANGE,
     BUTTON_PURPLE,
     BUTTON_RED,
+    BUTTON_TEAL,
+    BUTTON_TEAL_HOVER,
     DIFFICULTY_LABELS,
     FONT_NAME,
     FPS,
@@ -37,9 +39,10 @@ from src.config import (
     WINDOW_TITLE,
     WINDOW_WIDTH,
 )
-from src.data import DataValidationError, load_questions
+from src.data import DataValidationError
 from src.logic import GameSession
 from src.profiles import ensure_player, format_score, load_profiles, parse_score, update_player_result
+from src.question_sources import QuestionSourceManager, QuestionSourceState
 from src.sound import SoundManager
 from src.ui import (
     Button,
@@ -90,8 +93,9 @@ class MillionaireApp:
         }
         self.sound = SoundManager()
 
-        question_pool = load_questions()
-        self.session = GameSession(question_pool)
+        self.question_manager = QuestionSourceManager()
+        self.question_source_state = self.question_manager.load_active_questions()
+        self.session = GameSession(self.question_source_state.question_pool)
         self.session.start_new_game()
 
         self.profiles = load_profiles()
@@ -111,23 +115,25 @@ class MillionaireApp:
 
         self.rules_scroll = 0
         self.rules_paragraphs = [
-            "1. На экране появляется один вопрос и четыре ответа.",
-            "2. За каждый правильный ответ ты поднимаешься по лестнице призов.",
-            "3. Вопросы 1-5 лёгкие. После 5 вопроса у тебя есть первая несгораемая сумма.",
-            "4. Вопросы 6-10 средние. После 10 вопроса у тебя есть вторая несгораемая сумма.",
-            "5. Вопросы 11-15 сложнее и подходят для внимательного умного ребёнка.",
-            "6. Если ответ неверный, игра заканчивается, но несгораемые суммы сохраняются.",
-            "7. Подсказка 50:50 убирает два неправильных ответа.",
-            "8. Подсказка Убрать 1 прячет один неправильный ответ.",
-            "9. Подсказка Помощь зала показывает голоса. У правильного ответа процент всегда самый высокий.",
-            "10. Имя игрока и лучший результат сохраняются на компьютере, чтобы можно было играть снова.",
-            "11. Если правил много, прокручивай колёсиком мыши или стрелками вверх и вниз."
+            "1. В игре тебя ждут 20 вопросов и 4 варианта ответа на каждом шаге.",
+            "2. Вопросы 1-5 лёгкие. После 5 вопроса у тебя появляется первая несгораемая сумма.",
+            "3. Вопросы 6-10 средние. После 10 вопроса сохраняется вторая несгораемая сумма.",
+            "4. Вопросы 11-15 сложные, а вопросы 16-20 очень сложные и требуют больше внимания.",
+            "5. Если ответ неверный, игра заканчивается, но несгораемые суммы остаются у тебя.",
+            "6. Подсказка 50:50 убирает два неправильных ответа.",
+            "7. Подсказка Убрать 1 прячет один неправильный ответ.",
+            "8. Подсказка Помощь зала показывает голоса. У правильного ответа процент всегда самый высокий.",
+            "9. В меню есть кнопка Обновить вопросы. Если есть интернет, игра скачает новый questions.json из GitHub.",
+            "10. Если новый файл неверный или интернета нет, игра спокойно продолжит работать на текущих вопросах.",
+            "11. Имя игрока и лучший результат сохраняются на компьютере.",
+            "12. Если правила длинные, прокручивай колёсиком мыши или клавишами вверх и вниз.",
         ]
         self.rules_lines = self._build_rules_lines()
 
         self.state = "profile"
         self.running = True
-        self.message = "Выбери игрока и начни игру."
+        self.message = "Выбери игрока и начинай игру."
+        self.menu_message = self.question_source_state.message
         self.pending_transition: PendingTransition | None = None
         self.selected_answer: int | None = None
         self.show_audience_modal = False
@@ -149,34 +155,88 @@ class MillionaireApp:
     def _create_answer_buttons(self) -> list[Button]:
         letters = ["А", "Б", "В", "Г"]
         positions = [
-            pygame.Rect(60, 458, 455, 110),
-            pygame.Rect(545, 458, 455, 110),
-            pygame.Rect(60, 592, 455, 110),
-            pygame.Rect(545, 592, 455, 110),
+            pygame.Rect(60, 458, 440, 110),
+            pygame.Rect(530, 458, 440, 110),
+            pygame.Rect(60, 592, 440, 110),
+            pygame.Rect(530, 592, 440, 110),
         ]
         return [Button(rect, letters[index], self.fonts["body"]) for index, rect in enumerate(positions)]
 
-    def _create_menu_buttons(self) -> list[Button]:
-        return [
-            Button(pygame.Rect(478, 270, 404, 86), "Играть", self.fonts["menu"], bg_color=BUTTON_GREEN),
-            Button(pygame.Rect(478, 380, 404, 86), "Правила", self.fonts["menu"], bg_color=BUTTON_ORANGE),
-            Button(pygame.Rect(478, 490, 404, 86), "Выход", self.fonts["menu"], bg_color=BUTTON_RED),
-        ]
+    def _create_menu_buttons(self) -> dict[str, Button]:
+        return {
+            "play": Button(
+                pygame.Rect(280, 370, 340, 86),
+                "Играть",
+                self.fonts["menu"],
+                bg_color=BUTTON_GREEN,
+            ),
+            "rules": Button(
+                pygame.Rect(740, 370, 340, 86),
+                "Правила",
+                self.fonts["menu"],
+                bg_color=BUTTON_ORANGE,
+            ),
+            "update": Button(
+                pygame.Rect(280, 484, 340, 86),
+                "Обновить вопросы",
+                self.fonts["menu"],
+                bg_color=BUTTON_TEAL,
+                hover_color=BUTTON_TEAL_HOVER,
+            ),
+            "exit": Button(
+                pygame.Rect(740, 484, 340, 86),
+                "Выход",
+                self.fonts["menu"],
+                bg_color=BUTTON_RED,
+            ),
+        }
 
     def _create_rules_buttons(self) -> list[Button]:
-        return [Button(pygame.Rect(528, 664, 304, 60), "Назад в меню", self.fonts["small"], bg_color=BUTTON_BLUE)]
+        return [
+            Button(
+                pygame.Rect(528, 664, 304, 60),
+                "Назад в меню",
+                self.fonts["small"],
+                bg_color=BUTTON_BLUE,
+            )
+        ]
 
     def _create_result_buttons(self) -> list[Button]:
         return [
-            Button(pygame.Rect(390, 566, 260, 74), "Играть снова", self.fonts["main"], bg_color=BUTTON_GREEN),
-            Button(pygame.Rect(710, 566, 260, 74), "В меню", self.fonts["main"], bg_color=BUTTON_BLUE),
+            Button(
+                pygame.Rect(390, 566, 260, 74),
+                "Играть снова",
+                self.fonts["main"],
+                bg_color=BUTTON_GREEN,
+            ),
+            Button(
+                pygame.Rect(710, 566, 260, 74),
+                "В меню",
+                self.fonts["main"],
+                bg_color=BUTTON_BLUE,
+            ),
         ]
 
     def _create_hint_buttons(self) -> dict[str, Button]:
         return {
-            "fifty": Button(pygame.Rect(60, 240, 180, 62), "50:50", self.fonts["small"], bg_color=BUTTON_ORANGE),
-            "remove_one": Button(pygame.Rect(260, 240, 180, 62), "Убрать 1", self.fonts["small"], bg_color=BUTTON_PURPLE),
-            "audience": Button(pygame.Rect(460, 240, 220, 62), "Помощь зала", self.fonts["small"], bg_color=BUTTON_GREEN),
+            "fifty": Button(
+                pygame.Rect(60, 240, 180, 62),
+                "50:50",
+                self.fonts["small"],
+                bg_color=BUTTON_ORANGE,
+            ),
+            "remove_one": Button(
+                pygame.Rect(260, 240, 180, 62),
+                "Убрать 1",
+                self.fonts["small"],
+                bg_color=BUTTON_PURPLE,
+            ),
+            "audience": Button(
+                pygame.Rect(460, 240, 220, 62),
+                "Помощь зала",
+                self.fonts["small"],
+                bg_color=BUTTON_GREEN,
+            ),
         }
 
     def _build_rules_lines(self) -> list[str]:
@@ -222,25 +282,52 @@ class MillionaireApp:
             return
 
         amount = PRIZE_LADDER[-1] if self.session.victory else self.session.last_won_amount
-        self.profiles = update_player_result(self.profiles, self.current_player_name, parse_score(amount))
+        self.profiles = update_player_result(
+            self.profiles,
+            self.current_player_name,
+            parse_score(amount),
+        )
         self._refresh_profile_buttons()
         self.result_saved = True
 
     def _render_fit_text(self, text: str, max_width: int, size: int, bold: bool = True) -> pygame.Surface:
         current_size = size
-        while current_size >= 14:
+        while current_size >= 12:
             font = pygame.font.SysFont(FONT_NAME, current_size, bold=bold)
             rendered = font.render(text, True, TEXT_DARK)
             if rendered.get_width() <= max_width:
                 return rendered
             current_size -= 1
-        return pygame.font.SysFont(FONT_NAME, 14, bold=bold).render(text, True, TEXT_DARK)
+        return pygame.font.SysFont(FONT_NAME, 12, bold=bold).render(text, True, TEXT_DARK)
 
     def _scroll_rules(self, delta: int) -> None:
         viewport_height = 460
         content_height = len(self.rules_lines) * (self.fonts["body"].get_height() + 8)
         max_scroll = max(0, content_height - viewport_height + 12)
         self.rules_scroll = max(0, min(max_scroll, self.rules_scroll + delta))
+
+    def _apply_question_source(self, source_state: QuestionSourceState, message: str | None = None) -> None:
+        self.question_source_state = source_state
+        self.session.question_pool = source_state.question_pool
+        self.menu_message = message or source_state.message
+
+    def _update_questions(self) -> None:
+        if self.state == "game":
+            self.menu_message = "Сначала закончи текущую игру, потом обновляй вопросы."
+            return
+
+        self.menu_message = "Пробуем скачать новый файл вопросов..."
+        self._draw()
+        pygame.display.flip()
+        pygame.event.pump()
+
+        result = self.question_manager.download_questions_update()
+        if result.success:
+            source_state = self.question_manager.load_active_questions()
+            self._apply_question_source(source_state, result.message)
+            return
+
+        self.menu_message = result.message
 
     def run(self) -> None:
         while self.running:
@@ -294,15 +381,18 @@ class MillionaireApp:
                     self.profile_input += event.unicode
 
     def _handle_menu_event(self, event: pygame.event.Event) -> None:
-        if self.menu_buttons[0].handle_event(event):
+        if self.menu_buttons["play"].handle_event(event):
             self.sound.play("click")
             self._restart_game()
             self.state = "game"
-        elif self.menu_buttons[1].handle_event(event):
+        elif self.menu_buttons["rules"].handle_event(event):
             self.sound.play("click")
             self.rules_scroll = 0
             self.state = "rules"
-        elif self.menu_buttons[2].handle_event(event):
+        elif self.menu_buttons["update"].handle_event(event):
+            self.sound.play("click")
+            self._update_questions()
+        elif self.menu_buttons["exit"].handle_event(event):
             self.running = False
 
     def _handle_rules_event(self, event: pygame.event.Event) -> None:
@@ -367,7 +457,6 @@ class MillionaireApp:
         elif self.result_buttons[1].handle_event(event):
             self.sound.play("click")
             self.state = "menu"
-
     def _update(self) -> None:
         if self.state == "result" and self.session.victory:
             self._update_money_sprites()
@@ -428,12 +517,12 @@ class MillionaireApp:
         self.money_sprites = []
         self.result_saved = False
         player_name = self.current_player_name or "игрок"
-        self.message = f"{player_name}, ответь на вопрос и поднимайся по лестнице призов."
+        self.message = f"{player_name}, ответь на вопрос и пройди все 20 шагов."
         self._sync_answer_buttons()
 
     def _create_money_sprites(self) -> None:
         self.money_sprites = []
-        for _ in range(26):
+        for _ in range(28):
             currency = random.choice(["$", "€"])
             if currency == "$":
                 color = random.choice([(128, 222, 146), (100, 204, 122), (151, 231, 163)])
@@ -472,9 +561,20 @@ class MillionaireApp:
         bill_rect = bill.get_rect()
         pygame.draw.rect(bill, sprite.color, bill_rect, border_radius=14)
         pygame.draw.rect(bill, (255, 255, 255), bill_rect.inflate(-10, -10), width=2, border_radius=10)
-        pygame.draw.circle(bill, sprite.accent, (sprite.width // 2, sprite.height // 2), min(sprite.width, sprite.height) // 4)
+        pygame.draw.circle(
+            bill,
+            sprite.accent,
+            (sprite.width // 2, sprite.height // 2),
+            min(sprite.width, sprite.height) // 4,
+        )
         symbol = self.fonts["subtitle"].render(sprite.currency, True, (255, 255, 255))
-        bill.blit(symbol, (bill.get_width() // 2 - symbol.get_width() // 2, bill.get_height() // 2 - symbol.get_height() // 2))
+        bill.blit(
+            symbol,
+            (
+                bill.get_width() // 2 - symbol.get_width() // 2,
+                bill.get_height() // 2 - symbol.get_height() // 2,
+            ),
+        )
         shine = pygame.Surface((sprite.width // 4, sprite.height - 16), pygame.SRCALPHA)
         shine.fill((255, 255, 255, 60))
         bill.blit(shine, (10, 8))
@@ -559,36 +659,83 @@ class MillionaireApp:
         self.screen.blit(input_label, (panel.centerx - input_label.get_width() // 2, 420))
 
         pygame.draw.rect(self.screen, INPUT_BG, self.profile_input_rect, border_radius=20)
-        pygame.draw.rect(self.screen, ACCENT if self.profile_input_active else BORDER, self.profile_input_rect, width=3, border_radius=20)
+        pygame.draw.rect(
+            self.screen,
+            ACCENT if self.profile_input_active else BORDER,
+            self.profile_input_rect,
+            width=3,
+            border_radius=20,
+        )
         input_text = self.profile_input or "Напиши имя"
         input_color = TEXT_DARK if self.profile_input else (115, 130, 170)
         rendered = self.fonts["body"].render(input_text, True, input_color)
-        self.screen.blit(rendered, (self.profile_input_rect.left + 20, self.profile_input_rect.centery - rendered.get_height() // 2))
+        self.screen.blit(
+            rendered,
+            (self.profile_input_rect.left + 20, self.profile_input_rect.centery - rendered.get_height() // 2),
+        )
 
         self.profile_continue_button.draw(self.screen)
 
-        message_rect = pygame.Rect(250, 640, 860, 36)
-        render_wrapped_text(self.screen, self.profile_message, self.fonts["small"], TEXT_DARK, message_rect, align="center")
+        info_rect = pygame.Rect(220, 628, 920, 30)
+        render_wrapped_text(
+            self.screen,
+            f"База вопросов: {self.question_source_state.source_label}.",
+            self.fonts["small"],
+            TEXT_DARK,
+            info_rect,
+            align="center",
+        )
 
+        message_rect = pygame.Rect(250, 662, 860, 30)
+        render_wrapped_text(
+            self.screen,
+            self.profile_message,
+            self.fonts["small"],
+            TEXT_DARK,
+            message_rect,
+            align="center",
+        )
     def _draw_menu(self) -> None:
-        panel = pygame.Rect(240, 86, 880, 580)
+        panel = pygame.Rect(180, 70, 1000, 620)
         draw_rounded_panel(self.screen, panel, radius=34)
 
         title = self.fonts["title"].render("Детский миллионер", True, TEXT_DARK)
-        subtitle = self.fonts["body"].render("Ответь на 15 вопросов и дойди до 1 000 000!", True, TEXT_DARK)
-        self.screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 144))
-        self.screen.blit(subtitle, (WINDOW_WIDTH // 2 - subtitle.get_width() // 2, 204))
+        subtitle = self.fonts["body"].render("Ответь на 20 вопросов и доберись до 1 000 000!", True, TEXT_DARK)
+        self.screen.blit(title, (WINDOW_WIDTH // 2 - title.get_width() // 2, 120))
+        self.screen.blit(subtitle, (WINDOW_WIDTH // 2 - subtitle.get_width() // 2, 180))
 
         player_name = self.current_player_name or "Игрок"
         best_score = format_score(self._current_player_best_score())
-        player_badge = pygame.Rect(340, 238, 680, 52)
-        draw_badge(self.screen, player_badge, f"Игрок: {player_name} | Лучший результат: {best_score}", self.fonts["small"])
+        player_badge = pygame.Rect(320, 228, 720, 52)
+        draw_badge(
+            self.screen,
+            player_badge,
+            f"Игрок: {player_name} | Лучший результат: {best_score}",
+            self.fonts["small"],
+        )
 
-        for button in self.menu_buttons:
+        source_badge = pygame.Rect(360, 292, 640, 46)
+        draw_badge(
+            self.screen,
+            source_badge,
+            f"База вопросов: {self.question_source_state.source_label}",
+            self.fonts["small"],
+        )
+
+        for button in self.menu_buttons.values():
             button.draw(self.screen)
 
-        note_rect = pygame.Rect(320, 602, 720, 34)
-        render_wrapped_text(self.screen, "Сначала лёгкие вопросы, потом средние, затем сложнее. Несгораемые суммы есть после 5 и 10 вопроса.", self.fonts["small"], TEXT_DARK, note_rect, align="center")
+        status_rect = pygame.Rect(260, 600, 840, 54)
+        pygame.draw.rect(self.screen, PROFILE_CARD, status_rect, border_radius=20)
+        pygame.draw.rect(self.screen, BORDER, status_rect, width=2, border_radius=20)
+        render_wrapped_text(
+            self.screen,
+            self.menu_message,
+            self.fonts["small"],
+            TEXT_DARK,
+            status_rect.inflate(-20, -12),
+            align="center",
+        )
 
     def _draw_rules(self) -> None:
         panel = pygame.Rect(90, 30, 1180, 708)
@@ -612,16 +759,29 @@ class MillionaireApp:
         self.screen.set_clip(previous_clip)
 
         content_height = len(self.rules_lines) * line_height
-        draw_scrollbar(self.screen, pygame.Rect(1014, 130, 16, 446), viewport_rect.height, content_height, self.rules_scroll)
+        draw_scrollbar(
+            self.screen,
+            pygame.Rect(1014, 130, 16, 446),
+            viewport_rect.height,
+            content_height,
+            self.rules_scroll,
+        )
 
         scroll_hint = pygame.Rect(140, 606, 860, 30)
-        render_wrapped_text(self.screen, "Прокрутка: колёсико мыши, стрелки вверх и вниз, Page Up и Page Down.", self.fonts["small"], TEXT_DARK, scroll_hint, align="center")
+        render_wrapped_text(
+            self.screen,
+            "Прокрутка: колёсико мыши, стрелки вверх и вниз, Page Up и Page Down.",
+            self.fonts["small"],
+            TEXT_DARK,
+            scroll_hint,
+            align="center",
+        )
 
         self.rules_buttons[0].draw(self.screen)
 
     def _draw_game(self) -> None:
-        left_panel = pygame.Rect(30, 24, 1020, 720)
-        right_panel = pygame.Rect(1080, 24, 250, 720)
+        left_panel = pygame.Rect(30, 24, 1000, 720)
+        right_panel = pygame.Rect(1050, 24, 280, 720)
         draw_rounded_panel(self.screen, left_panel, radius=30)
         draw_rounded_panel(self.screen, right_panel, radius=30)
 
@@ -632,13 +792,18 @@ class MillionaireApp:
         )
         self.screen.blit(title, (60, 44))
 
-        badge_rect = pygame.Rect(510, 38, 190, 52)
+        badge_rect = pygame.Rect(520, 38, 180, 52)
         draw_badge(self.screen, badge_rect, f"Сумма: {self.session.current_amount}", self.fonts["small"])
 
-        category_rect = pygame.Rect(720, 38, 300, 52)
-        draw_badge(self.screen, category_rect, f"Тема: {self.session.current_question.category}", self.fonts["small"])
+        category_rect = pygame.Rect(720, 38, 270, 52)
+        draw_badge(
+            self.screen,
+            category_rect,
+            f"Тема: {self.session.current_question.category}",
+            self.fonts["small"],
+        )
 
-        player_rect = pygame.Rect(60, 92, 300, 40)
+        player_rect = pygame.Rect(60, 92, 300, 34)
         render_wrapped_text(
             self.screen,
             f"Игрок: {self.current_player_name or 'гость'}",
@@ -647,7 +812,7 @@ class MillionaireApp:
             player_rect,
         )
 
-        question_panel = pygame.Rect(60, 140, 940, 118)
+        question_panel = pygame.Rect(60, 140, 930, 120)
         pygame.draw.rect(self.screen, PANEL_COLOR, question_panel, border_radius=24)
         pygame.draw.rect(self.screen, ACCENT, question_panel, width=4, border_radius=24)
         render_wrapped_text(
@@ -665,7 +830,7 @@ class MillionaireApp:
         for button in self.hint_buttons.values():
             button.draw(self.screen)
 
-        message_panel = pygame.Rect(705, 274, 295, 84)
+        message_panel = pygame.Rect(690, 272, 300, 92)
         pygame.draw.rect(self.screen, PROFILE_CARD, message_panel, border_radius=22)
         pygame.draw.rect(self.screen, BORDER, message_panel, width=2, border_radius=22)
         render_wrapped_text(
@@ -680,10 +845,16 @@ class MillionaireApp:
         milestone_text = f"Несгораемая сумма сейчас: {self.session.secured_amount}"
         if self.session.is_milestone_question():
             milestone_text = "Этот вопрос ведёт к несгораемой сумме!"
-        milestone_rect = pygame.Rect(60, 374, 560, 32)
-        render_wrapped_text(self.screen, milestone_text, self.fonts["small"], TEXT_DARK, milestone_rect)
+        milestone_rect = pygame.Rect(60, 382, 560, 32)
+        render_wrapped_text(
+            self.screen,
+            milestone_text,
+            self.fonts["small"],
+            TEXT_DARK,
+            milestone_rect,
+        )
 
-        difficulty_rect = pygame.Rect(650, 372, 350, 32)
+        difficulty_rect = pygame.Rect(640, 382, 350, 32)
         render_wrapped_text(
             self.screen,
             f"Сложность: {DIFFICULTY_LABELS[self.session.current_difficulty]}",
@@ -713,9 +884,11 @@ class MillionaireApp:
         title = self.fonts["subtitle"].render("Призы", True, TEXT_DARK)
         self.screen.blit(title, (panel.centerx - title.get_width() // 2, panel.top + 18))
 
-        item_height = 38
-        gap = 6
+        gap = 5
+        available_height = panel.height - 110
+        item_height = max(24, min(34, (available_height - gap * (len(PRIZE_LADDER) - 1)) // len(PRIZE_LADDER)))
         start_y = panel.bottom - 28 - item_height
+
         for reverse_index, amount in enumerate(reversed(PRIZE_LADDER)):
             level = len(PRIZE_LADDER) - reverse_index
             y = start_y - reverse_index * (item_height + gap)
@@ -728,20 +901,28 @@ class MillionaireApp:
             else:
                 color = (238, 243, 255)
 
-            pygame.draw.rect(self.screen, color, item_rect, border_radius=14)
+            pygame.draw.rect(self.screen, color, item_rect, border_radius=12)
             border_color = MILESTONE_GLOW if level in MILESTONE_LEVELS else BORDER
             border_width = 3 if level in MILESTONE_LEVELS else 2
-            pygame.draw.rect(self.screen, border_color, item_rect, width=border_width, border_radius=14)
+            pygame.draw.rect(self.screen, border_color, item_rect, width=border_width, border_radius=12)
 
-            level_text = self._render_fit_text(str(level), 28, 18)
-            amount_text = self._render_fit_text(amount, item_rect.width - 70, 23)
-            self.screen.blit(level_text, (item_rect.left + 10, item_rect.centery - level_text.get_height() // 2))
-            self.screen.blit(amount_text, (item_rect.right - amount_text.get_width() - 10, item_rect.centery - amount_text.get_height() // 2))
+            level_text = self._render_fit_text(str(level), 26, 16)
+            amount_text = self._render_fit_text(amount, item_rect.width - 80, 20)
+            self.screen.blit(
+                level_text,
+                (item_rect.left + 10, item_rect.centery - level_text.get_height() // 2),
+            )
+            self.screen.blit(
+                amount_text,
+                (item_rect.right - amount_text.get_width() - 10, item_rect.centery - amount_text.get_height() // 2),
+            )
 
             if level in MILESTONE_LEVELS:
-                tag = self.fonts["tiny"].render("несгораемая", True, TEXT_DARK)
-                self.screen.blit(tag, (item_rect.left + 36, item_rect.top + 10))
-
+                mark = self.fonts["tiny"].render("НС", True, TEXT_DARK)
+                self.screen.blit(
+                    mark,
+                    (item_rect.left + 40, item_rect.centery - mark.get_height() // 2),
+                )
     def _draw_result(self) -> None:
         if self.session.victory:
             for sprite in self.money_sprites:
@@ -752,7 +933,7 @@ class MillionaireApp:
 
         if self.session.victory:
             title_text = "Ты победил!"
-            subtitle_text = "Поздравляем! Ты прошёл все 15 вопросов."
+            subtitle_text = "Поздравляем! Ты прошёл все 20 вопросов."
             amount = PRIZE_LADDER[-1]
             color = BUTTON_GREEN
         else:
